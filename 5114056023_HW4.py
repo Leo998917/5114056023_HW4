@@ -21,7 +21,7 @@ def ask_gemini_shopping_only(user_query, api_key):
         genai.configure(api_key=api_key)
         
         # ✅ 關鍵：現在環境已經更新了，這個寫法絕對可以跑！
-        model = genai.GenerativeModel('models/gemini-1.5-flash', tools='google_search_retrieval')
+        model = genai.GenerativeModel('models/gemini-1.5-flash-001', tools='google_search_retrieval')
         
         search_instruction = f"{user_query} (site:momo.com.tw OR site:shopee.tw OR site:pchome.com.tw)"
         
