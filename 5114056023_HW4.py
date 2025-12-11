@@ -9,108 +9,74 @@ API_KEY = "AIzaSyBeFmDMw6bDQ68Ofap6qwq2YVFy3xl2Hgc"  # <--- 把你的 Key 貼在
 # ==========================================
 
 # --- 頁面設定 ---
-st.set_page_config(page_title="Gemini 電商搜尋助手", page_icon="💎", layout="wide")
-st.title("💎 Gemini 電商搜尋助手 (Hardcode Key 版)")
-st.markdown("告訴我你想買什麼，我幫你上網搜 **Momo** 和 **蝦皮**，並用 **Gemini** 整理懶人包！")
+st.set_page_config(page_title="AI 購物比價王", page_icon="🛒", layout="wide")
+st.title("🛒 AI 購物比價王 (鎖定電商版)")
+st.markdown("這是一個專注於 **購物平台** 的搜尋引擎。我會強制 Gemini 只去 **Momo、蝦皮、PChome** 找資料，過濾掉廣告和廢文！")
 
-# --- 側邊欄設定 ---
+# --- 側邊欄 ---
 with st.sidebar:
-    st.success("✅ 目前已使用內建的 API Key")
-    st.info("💡 本系統使用 Gemini 1.5 Flash 模型進行分析。")
-    target_site = st.radio("你想搜尋哪個平台？", ["Momo 購物網", "蝦皮購物 (Shopee)", "全網搜尋"])
+    st.info("✅ 已啟用 Google Search Grounding")
+    st.success("🔒 搜尋範圍已鎖定：\n- Momo 購物網\n- 蝦皮購物\n- PChome 24h")
 
-# --- 核心功能：聯網搜尋 ---
-def search_web(query, site_choice):
-    site_syntax = ""
-    if site_choice == "Momo 購物網":
-        site_syntax = "site:momo.com.tw"
-    elif site_choice == "蝦皮購物 (Shopee)":
-        site_syntax = "site:shopee.tw"
-    
-    search_term = f"{site_syntax} {query}"
-    results = []
-    try:
-        with DDGS() as ddgs:
-            # max_results 可以自己調整，抓太多會變慢
-            search_gen = ddgs.text(search_term, max_results=6)
-            for r in search_gen:
-                results.append(r)
-    except Exception as e:
-        st.error(f"搜尋連線錯誤: {e}")
-    return results
-
-# --- 核心功能：Gemini 分析 ---
-def ai_summarize(user_query, search_results, api_key):
-    if not search_results:
-        return "找不到相關資料。"
-
-    # 設定 Google API
+# --- 核心功能 ---
+def ask_gemini_shopping_only(user_query, api_key):
     try:
         genai.configure(api_key=api_key)
-        # 使用 Gemini 1.5 Flash (速度快且免費額度高)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-    except Exception as e:
-        return f"API 設定錯誤: {str(e)}"
-    
-    # 整理搜尋資料
-    context = ""
-    for i, res in enumerate(search_results):
-        context += f"""
-        [結果 {i+1}]
-        標題: {res.get('title')}
-        連結: {res.get('href')}
-        摘要: {res.get('body')}
-        ----------------
+        
+        # 啟用搜尋工具
+        model = genai.GenerativeModel('models/gemini-1.5-flash', tools='google_search_retrieval')
+        
+        # 🌟 關鍵修改：我們不只是傳入使用者的問題，我們還把「搜尋語法」塞進去
+        # 這會誘導 Gemini 在搜尋時使用 site: 語法
+        search_instruction = f"{user_query} (site:momo.com.tw OR site:shopee.tw OR site:pchome.com.tw)"
+        
+        prompt = f"""
+        你是一位專業的台灣電商導購專家。
+        
+        請利用 Google 搜尋功能，針對以下關鍵字進行搜尋：
+        "{search_instruction}"
+        
+        ⚠️ 嚴格限制：
+        1. 資料來源必須來自 **Momo**、**蝦皮** 或 **PChome** 的商品頁面。
+        2. 請忽略新聞、部落格、維基百科或純討論區的結果。
+        3. 請找出目前「有現貨」或「價格明確」的 3-5 款產品。
+
+        請輸出結果為 Markdown 表格，欄位包含：
+        - 📦 產品名稱
+        - 💰 價格 (若搜尋結果有顯示)
+        - ✨ 適合理由
+        - 🔗 來源平台 (Momo/蝦皮/PChome)
+        
+        最後請給出一段簡短的購買建議。
         """
-
-    # 提示詞 (Prompt)
-    prompt = f"""
-    使用者想找："{user_query}"
-    
-    我剛剛上網搜尋到了以下產品資訊：
-    {context}
-    
-    任務：
-    1. 請從搜尋結果中，挑選 **3 款最相關** 的產品。
-    2. 請製作一個 Markdown 表格，欄位包括：【產品名稱】、【價格(若有)】、【特色分析】、【購買連結】。
-    3. 在表格下方，給出一段 100 字的「購買建議」。
-    4. 若搜尋結果與產品無關，請說明找不到。
-    
-    請直接輸出分析結果。
-    """
-
-    try:
-        # 呼叫 Gemini
+        
+        # 發送請求
         response = model.generate_content(prompt)
         return response.text
+        
     except Exception as e:
-        return f"Gemini 分析失敗: {str(e)}"
+        return f"發生錯誤: {str(e)}\n(請確認 API Key 是否正確，或是否有啟用 Google Search Grounding 功能)"
 
-# --- 主介面互動 ---
-user_input = st.text_input("你想找什麼？ (例如：羅技靜音滑鼠)", "")
+# --- 主介面 ---
+col1, col2 = st.columns([3, 1])
+with col1:
+    user_input = st.text_input("你想買什麼？ (例如：輕量化行動電源)", "")
+with col2:
+    st.write("") # 排版用
+    st.write("") 
+    search_btn = st.button("開始比價 🔎", use_container_width=True)
 
-if st.button("開始搜尋 🚀"):
+if search_btn:
     if "AIza" not in API_KEY:
         st.error("⚠️ 請先在程式碼第 7 行填入正確的 API Key！")
     elif not user_input:
-        st.warning("請輸入關鍵字！")
+        st.warning("請輸入商品關鍵字！")
     else:
         status_box = st.empty()
-        status_box.info("正在連線 DuckDuckGo 搜尋中...")
+        status_box.info(f"正在鎖定各大電商平台搜尋：{user_input} ...")
         
-        # 1. 搜尋
-        raw_results = search_web(user_input, target_site)
+        result = ask_gemini_shopping_only(user_input, API_KEY)
         
-        if raw_results:
-            with st.expander("查看原始搜尋結果"):
-                st.write(raw_results)
-            
-            # 2. Gemini 分析
-            status_box.info("搜尋完成！正在呼叫 Gemini 大腦...")
-            ai_response = ai_summarize(user_input, raw_results, API_KEY)
-            
-            status_box.success("分析完成！")
-            st.markdown("### 💎 Gemini 推薦結果")
-            st.markdown(ai_response)
-        else:
-            status_box.error("搜尋不到資料。")
+        status_box.success("比價完成！")
+        st.markdown("### 🏷️ 嚴選商品清單")
+        st.markdown(result)
