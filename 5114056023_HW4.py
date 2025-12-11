@@ -24,7 +24,7 @@ def ask_gemini_shopping_only(user_query, api_key):
         genai.configure(api_key=api_key)
         
         # 啟用搜尋工具
-        model = genai.GenerativeModel('models/gemini-pro', tools='google_search_retrieval')
+        model = genai.GenerativeModel('models/gemini-pro')
         
         # 🌟 關鍵修改：我們不只是傳入使用者的問題，我們還把「搜尋語法」塞進去
         # 這會誘導 Gemini 在搜尋時使用 site: 語法
